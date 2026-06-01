@@ -33,7 +33,7 @@ china-map-public/
 
 ## Quick Start
 
-1. 进入项目目录。（注意：由于第3步中是需要在powershell中操作的，所以建议刚开始的时候不要在cmd中打开，而是在powershell中打开，）
+1. 打包下载当前文件夹，进入项目目录。（注意：由于第3步中是需要在powershell中操作的，所以建议刚开始的时候不要在cmd中打开，而是在powershell中打开，）
 2. 下载并生成地图数据：
 
 ```powershell
