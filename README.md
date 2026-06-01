@@ -2,6 +2,8 @@
 
 一个本地运行的中国旅游地图工具，支持全国行政区分层浏览、地名检索，以及基于高德 API 的多目的地公共交通方案查询。
 
+使用高德地图 API 的一种旅游路线、费用和出行方式规划可视化网页。
+
 ![Preview](./assets/github-cover-travel-map.svg)
 
 ## Features
