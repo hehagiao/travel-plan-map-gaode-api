@@ -1,0 +1,1131 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>中国行政区地图 DataV 本地预览</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #17202a;
+      --muted: #667085;
+      --line: #d7dde6;
+      --water: #eef6fb;
+      --land: #dcefd9;
+      --land-hover: #f3d27a;
+      --stroke: #33658a;
+      --panel: #ffffff;
+      --accent: #c44536;
+      --province-label: #1d4f7a;
+      --city-label: #8a4a0a;
+      --district-label: #475467;
+      --province-dot: #c2410c;
+      --city-dot: #2563eb;
+      --district-dot: #475467;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      overflow: hidden;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: var(--ink);
+      background: var(--water);
+    }
+
+    .app {
+      display: grid;
+      grid-template-rows: auto 1fr;
+      min-height: 100vh;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--line);
+      background: var(--panel);
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 18px;
+      font-weight: 650;
+      white-space: nowrap;
+    }
+
+    .toolbar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    button {
+      min-height: 34px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 0 12px;
+      background: #fff;
+      color: var(--ink);
+      font: inherit;
+      cursor: pointer;
+    }
+
+    input {
+      min-height: 34px;
+      width: min(220px, 40vw);
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 0 10px;
+      background: #fff;
+      color: var(--ink);
+      font: inherit;
+    }
+
+    .mode-button.is-selected {
+      border-color: var(--accent);
+      color: var(--accent);
+      font-weight: 650;
+    }
+
+    button:hover:not(:disabled) {
+      border-color: var(--stroke);
+    }
+
+    button:disabled {
+      color: #98a2b3;
+      cursor: default;
+    }
+
+    main {
+      position: relative;
+      min-height: 0;
+    }
+
+    #map {
+      display: block;
+      width: 100%;
+      height: calc(100vh - 59px);
+      background: #edf6fb;
+      cursor: grab;
+      touch-action: none;
+      user-select: none;
+    }
+
+    #map.is-dragging {
+      cursor: grabbing;
+    }
+
+    .area {
+      fill: var(--land);
+      stroke-width: 0.75;
+      vector-effect: non-scaling-stroke;
+      cursor: pointer;
+      transition: fill 120ms ease;
+    }
+
+    .area:hover,
+    .area.is-active {
+      fill: var(--land-hover);
+    }
+
+    .label {
+      text-anchor: start;
+      dominant-baseline: central;
+      cursor: pointer;
+      pointer-events: auto;
+      user-select: none;
+      font-weight: 650;
+    }
+
+    .label-item {
+      cursor: pointer;
+      pointer-events: auto;
+    }
+
+    .marker {
+      stroke: #fff;
+      vector-effect: non-scaling-stroke;
+    }
+
+    .marker.province {
+      fill: var(--province-dot);
+      stroke-width: 1.6;
+    }
+
+    .marker.city {
+      fill: var(--city-dot);
+      stroke-width: 1.2;
+    }
+
+    .marker.district,
+    .marker.unknown {
+      fill: var(--district-dot);
+      stroke-width: 1;
+    }
+
+    .label.province {
+      fill: var(--province-label);
+    }
+
+    .label.city {
+      fill: var(--city-label);
+    }
+
+    .label.district,
+    .label.unknown {
+      fill: var(--district-label);
+      font-weight: 600;
+    }
+
+    .status,
+    .crumbs,
+    .route-panel {
+      position: absolute;
+      max-width: min(560px, calc(100vw - 32px));
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgb(255 255 255 / 0.92);
+      box-shadow: 0 8px 20px rgb(16 24 40 / 0.08);
+    }
+
+    .crumbs {
+      left: 16px;
+      top: 16px;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 7px 9px;
+      font-size: 13px;
+    }
+
+    .crumbs button {
+      min-height: 26px;
+      border: 0;
+      padding: 0 6px;
+      background: transparent;
+    }
+
+    .crumbs span {
+      color: var(--muted);
+    }
+
+    .status {
+      left: 16px;
+      bottom: 16px;
+      padding: 10px 12px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .status strong {
+      color: var(--ink);
+    }
+
+    .route-panel {
+      right: 16px;
+      top: 16px;
+      width: min(390px, calc(100vw - 32px));
+      max-height: calc(100vh - 120px);
+      overflow: auto;
+      padding: 12px;
+      font-size: 13px;
+    }
+
+    .route-panel h2 {
+      margin: 0 0 10px;
+      font-size: 15px;
+    }
+
+    .route-row {
+      display: grid;
+      grid-template-columns: 56px 1fr;
+      gap: 8px;
+      padding: 6px 0;
+      border-top: 1px solid var(--line);
+    }
+
+    .route-row:first-of-type {
+      border-top: 0;
+    }
+
+    .route-label {
+      color: var(--muted);
+    }
+
+    .route-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin: 10px 0;
+    }
+
+    .route-result {
+      padding: 9px 0;
+      border-top: 1px solid var(--line);
+    }
+
+    .route-result strong {
+      color: var(--ink);
+    }
+
+    .rail-plan {
+      margin-top: 7px;
+      padding: 8px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: rgb(255 255 255 / 0.72);
+    }
+
+    .rail-title {
+      font-weight: 650;
+      color: var(--ink);
+      margin-bottom: 4px;
+    }
+
+    .rail-meta {
+      color: var(--muted);
+      line-height: 1.55;
+    }
+
+    @media (max-width: 680px) {
+      header {
+        align-items: stretch;
+        flex-direction: column;
+      }
+
+      .toolbar {
+        justify-content: flex-start;
+      }
+
+      h1 {
+        white-space: normal;
+      }
+
+      #map {
+        height: calc(100vh - 107px);
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <h1>中国行政区地图 DataV 本地预览</h1>
+      <div class="toolbar">
+        <input id="searchInput" type="search" placeholder="搜索省、市、区县">
+        <button id="searchButton" type="button">搜索</button>
+        <button class="mode-button is-selected" id="inspectMode" type="button">查看</button>
+        <button class="mode-button" id="originMode" type="button">设起点</button>
+        <button class="mode-button" id="destinationMode" type="button">加终点</button>
+        <button id="queryTransit" type="button">查交通</button>
+        <button id="back" type="button">返回全国</button>
+        <button id="zoomIn" type="button">放大</button>
+        <button id="zoomOut" type="button">缩小</button>
+        <button id="fit" type="button">复位视图</button>
+      </div>
+    </header>
+    <main>
+      <svg id="map" role="img" aria-label="中国行政区地图">
+        <g id="viewport"></g>
+        <g id="labelOverlay"></g>
+      </svg>
+      <div class="crumbs" id="crumbs"></div>
+      <section class="route-panel" id="routePanel">
+        <h2>交通查询</h2>
+        <div class="route-row">
+          <div class="route-label">起点</div>
+          <div id="originText">未选择</div>
+        </div>
+        <div class="route-row">
+          <div class="route-label">终点</div>
+          <div id="destText">未选择</div>
+        </div>
+        <div class="route-actions">
+          <button id="clearRoute" type="button">清空选择</button>
+        </div>
+        <div id="routeResults">选择起点和一个或多个终点后，点击“查交通”。</div>
+      </section>
+      <div class="status" id="status">正在加载 DataV 本地地图数据...</div>
+    </main>
+  </div>
+
+  <script>
+    const svg = document.querySelector("#map");
+    const viewport = document.querySelector("#viewport");
+    const labelOverlay = document.querySelector("#labelOverlay");
+    const status = document.querySelector("#status");
+    const crumbs = document.querySelector("#crumbs");
+    const back = document.querySelector("#back");
+    const fit = document.querySelector("#fit");
+    const zoomIn = document.querySelector("#zoomIn");
+    const zoomOut = document.querySelector("#zoomOut");
+    const searchInput = document.querySelector("#searchInput");
+    const searchButton = document.querySelector("#searchButton");
+    const inspectMode = document.querySelector("#inspectMode");
+    const originMode = document.querySelector("#originMode");
+    const destinationMode = document.querySelector("#destinationMode");
+    const queryTransit = document.querySelector("#queryTransit");
+    const clearRoute = document.querySelector("#clearRoute");
+    const originText = document.querySelector("#originText");
+    const destText = document.querySelector("#destText");
+    const routeResults = document.querySelector("#routeResults");
+    const SVG_NS = "http://www.w3.org/2000/svg";
+    const LAYERS = [
+      { id: "province", name: "省级", file: "data/datav/combined_province.json", minScale: 0, labelSize: 13, markerSize: 5.5, markerGap: 7, minGap: 8, maxLabels: 35, cellSize: 150, strokeWidth: 1.15 },
+      { id: "city", name: "市级", file: "data/datav/combined_city.json", minScale: 2.2, labelSize: 9.5, markerSize: 4, markerGap: 6, minGap: 14, maxLabels: 260, cellSize: 110, strokeWidth: 0.9 },
+      { id: "district", name: "区县级", file: "data/datav/combined_district.json", minScale: 5.2, labelSize: 7.5, markerSize: 2.8, markerGap: 5, minGap: 15, maxLabels: 260, cellSize: 90, strokeWidth: 0.65 }
+    ];
+    const BOUNDARY_COLORS = ["#2563eb", "#dc2626", "#16a34a", "#9333ea", "#ea580c", "#0891b2", "#be123c", "#4f46e5", "#0f766e", "#a16207", "#7c3aed", "#0284c7"];
+    const MAP_BOUNDS = { minX: 73.5024, minY: 3.3972, maxX: 135.0957, maxY: 53.5636 };
+
+    let activeLayer = LAYERS[0];
+    let layerCache = new Map();
+    let currentGeoJson = null;
+    let view = { x: 0, y: 0, scale: 1 };
+    let drag = null;
+    let suppressNextClick = false;
+    let highlightedAdcodes = new Set();
+    let visibleLabelAdcodes = new Set();
+    let labelFrame = 0;
+    let layerSwitchFrame = 0;
+    let selectionMode = "inspect";
+    let routeOrigin = null;
+    let routeDestinations = new Map();
+
+    function eachPosition(coords, visit) {
+      if (!Array.isArray(coords)) return;
+      if (coords.length >= 2 && typeof coords[0] === "number" && typeof coords[1] === "number") {
+        visit(coords);
+        return;
+      }
+      coords.forEach((item) => eachPosition(item, visit));
+    }
+
+    function getBounds(geojson) {
+      const bounds = {
+        minX: Infinity,
+        minY: Infinity,
+        maxX: -Infinity,
+        maxY: -Infinity
+      };
+      geojson.features.forEach((feature) => {
+        eachPosition(feature.geometry.coordinates, ([x, y]) => {
+          bounds.minX = Math.min(bounds.minX, x);
+          bounds.minY = Math.min(bounds.minY, y);
+          bounds.maxX = Math.max(bounds.maxX, x);
+          bounds.maxY = Math.max(bounds.maxY, y);
+        });
+      });
+      return bounds;
+    }
+
+    function levelName(feature) {
+      const level = feature?.properties?.level || activeLayer.id || "";
+      return ({ country: "全国", province: "省级", city: "市级", district: "区县级" })[level] || level || "行政区";
+    }
+
+    function labelLevel(feature) {
+      const level = feature?.properties?.level || "";
+      return ["province", "city", "district"].includes(level) ? level : "unknown";
+    }
+
+    function boundaryKey(feature) {
+      const props = feature.properties || {};
+      const routes = props.acroutes || [];
+      if (activeLayer.id === "province") return props.adcode || props.name || "";
+      if (activeLayer.id === "city") return routes[1] || props.parent?.adcode || props.adcode || "";
+      return routes[2] || props.parent?.adcode || props.adcode || "";
+    }
+
+    function colorForKey(key) {
+      const text = String(key || "");
+      let hash = 0;
+      for (let i = 0; i < text.length; i += 1) {
+        hash = (hash * 31 + text.charCodeAt(i)) >>> 0;
+      }
+      return BOUNDARY_COLORS[hash % BOUNDARY_COLORS.length];
+    }
+
+    function project([lon, lat], bounds, width, height) {
+      const padding = Math.max(18, Math.min(width, height) * 0.05);
+      const usableW = width - padding * 2;
+      const usableH = height - padding * 2;
+      const scale = Math.min(
+        usableW / (bounds.maxX - bounds.minX),
+        usableH / (bounds.maxY - bounds.minY)
+      );
+      const mapW = (bounds.maxX - bounds.minX) * scale;
+      const mapH = (bounds.maxY - bounds.minY) * scale;
+      const offsetX = (width - mapW) / 2;
+      const offsetY = (height - mapH) / 2;
+
+      return [
+        offsetX + (lon - bounds.minX) * scale,
+        offsetY + (bounds.maxY - lat) * scale
+      ];
+    }
+
+    function ringToPath(ring, bounds, width, height) {
+      return ring.map((point, index) => {
+        const [x, y] = project(point, bounds, width, height);
+        return `${index === 0 ? "M" : "L"}${x.toFixed(2)},${y.toFixed(2)}`;
+      }).join(" ") + " Z";
+    }
+
+    function geometryToPaths(geometry, bounds, width, height) {
+      if (geometry.type === "Polygon") {
+        return [geometry.coordinates.map((ring) => ringToPath(ring, bounds, width, height)).join(" ")];
+      }
+      if (geometry.type === "MultiPolygon") {
+        return geometry.coordinates.map((polygon) => polygon.map((ring) => ringToPath(ring, bounds, width, height)).join(" "));
+      }
+      return [];
+    }
+
+    function labelPosition(feature, bounds, width, height) {
+      const props = feature.properties || {};
+      const point = props.centroid || props.center;
+      if (Array.isArray(point) && point.length >= 2) {
+        return project(point, bounds, width, height);
+      }
+
+      const boundsFallback = {
+        minX: Infinity,
+        minY: Infinity,
+        maxX: -Infinity,
+        maxY: -Infinity
+      };
+      eachPosition(feature.geometry.coordinates, ([x, y]) => {
+        boundsFallback.minX = Math.min(boundsFallback.minX, x);
+        boundsFallback.minY = Math.min(boundsFallback.minY, y);
+        boundsFallback.maxX = Math.max(boundsFallback.maxX, x);
+        boundsFallback.maxY = Math.max(boundsFallback.maxY, y);
+      });
+      return project([
+        (boundsFallback.minX + boundsFallback.maxX) / 2,
+        (boundsFallback.minY + boundsFallback.maxY) / 2
+      ], bounds, width, height);
+    }
+
+    function projectedFeatureBounds(feature, bounds, width, height) {
+      const projected = {
+        minX: Infinity,
+        minY: Infinity,
+        maxX: -Infinity,
+        maxY: -Infinity
+      };
+      eachPosition(feature.geometry.coordinates, (point) => {
+        const [x, y] = project(point, bounds, width, height);
+        projected.minX = Math.min(projected.minX, x);
+        projected.minY = Math.min(projected.minY, y);
+        projected.maxX = Math.max(projected.maxX, x);
+        projected.maxY = Math.max(projected.maxY, y);
+      });
+      return projected;
+    }
+
+    function clamp(value, min, max) {
+      return Math.max(min, Math.min(max, value));
+    }
+
+    function applyTransform() {
+      viewport.setAttribute("transform", `translate(${view.x.toFixed(2)} ${view.y.toFixed(2)}) scale(${view.scale.toFixed(4)})`);
+      scheduleLabelUpdate();
+      renderCrumbs();
+    }
+
+    function scheduleLabelUpdate() {
+      if (labelFrame) return;
+      labelFrame = requestAnimationFrame(() => {
+        labelFrame = 0;
+        updateLabels();
+      });
+    }
+
+    function setView(nextView) {
+      view = nextView;
+      applyTransform();
+    }
+
+    function zoomAt(clientX, clientY, factor) {
+      const rect = svg.getBoundingClientRect();
+      const px = clientX - rect.left;
+      const py = clientY - rect.top;
+      const nextScale = Math.max(0.7, Math.min(24, view.scale * factor));
+      const actual = nextScale / view.scale;
+      view.x = px - (px - view.x) * actual;
+      view.y = py - (py - view.y) * actual;
+      view.scale = nextScale;
+      applyTransform();
+      scheduleLayerUpdate();
+    }
+
+    function renderCrumbs() {
+      crumbs.replaceChildren();
+      const summary = document.createElement("span");
+      summary.textContent = `全国范围 / 当前显示：${activeLayer.name} / 缩放 ${view.scale.toFixed(1)}x`;
+      crumbs.append(summary);
+    }
+
+    function resetView() {
+      setView({ x: 0, y: 0, scale: 1 });
+      updateLayerForScale();
+    }
+
+    function showFeatureStatus(feature) {
+      const props = feature.properties || {};
+      const name = props.name || props.fullname || props.adcode || "未命名";
+      const adcode = String(props.adcode || "");
+      status.innerHTML = `<strong>${name}</strong> | ${levelName(feature)} | adcode: ${adcode || "无"} | 当前仍显示全国范围，可继续缩放或拖动查看其它地区。`;
+    }
+
+    function featurePoint(feature) {
+      const props = feature.properties || {};
+      const point = props.center || props.centroid;
+      if (!Array.isArray(point) || point.length < 2) return null;
+      return {
+        adcode: String(props.adcode || ""),
+        name: props.name || props.fullname || props.adcode || "未命名",
+        lng: Number(point[0]),
+        lat: Number(point[1]),
+        city: props.name || props.fullname || "",
+        level: props.level || activeLayer.id
+      };
+    }
+
+    function setMode(mode) {
+      selectionMode = mode;
+      inspectMode.classList.toggle("is-selected", mode === "inspect");
+      originMode.classList.toggle("is-selected", mode === "origin");
+      destinationMode.classList.toggle("is-selected", mode === "destination");
+    }
+
+    function renderRoutePanel() {
+      originText.textContent = routeOrigin ? `${routeOrigin.name} (${routeOrigin.lng.toFixed(4)}, ${routeOrigin.lat.toFixed(4)})` : "未选择";
+      const destinations = [...routeDestinations.values()];
+      destText.textContent = destinations.length ? destinations.map((item) => item.name).join("、") : "未选择";
+    }
+
+    function selectForRoute(feature) {
+      const point = featurePoint(feature);
+      if (!point) {
+        status.innerHTML = "<strong>无法选择</strong>：该区域没有可用中心坐标。";
+        return;
+      }
+      highlightedAdcodes.add(point.adcode);
+      if (selectionMode === "origin") {
+        routeOrigin = point;
+        status.innerHTML = `<strong>${point.name}</strong> 已设为起点。`;
+      } else if (selectionMode === "destination") {
+        if (routeDestinations.has(point.adcode)) {
+          routeDestinations.delete(point.adcode);
+          highlightedAdcodes.delete(point.adcode);
+          status.innerHTML = `<strong>${point.name}</strong> 已从终点列表移除。`;
+        } else {
+          routeDestinations.set(point.adcode, point);
+          status.innerHTML = `<strong>${point.name}</strong> 已加入终点列表。`;
+        }
+      }
+      applyHighlights();
+      renderRoutePanel();
+    }
+
+    function handleFeatureClick(feature) {
+      if (selectionMode === "origin" || selectionMode === "destination") {
+        selectForRoute(feature);
+      } else {
+        toggleHighlight(feature);
+      }
+    }
+
+    function applyHighlights() {
+      svg.querySelectorAll("[data-adcode]").forEach((node) => {
+        node.classList.toggle("is-active", highlightedAdcodes.has(node.dataset.adcode));
+      });
+    }
+
+    function toggleHighlight(feature) {
+      const adcode = String(feature.properties?.adcode || "");
+      if (!adcode) return;
+      if (highlightedAdcodes.has(adcode)) {
+        highlightedAdcodes.delete(adcode);
+      } else {
+        highlightedAdcodes.add(adcode);
+      }
+      applyHighlights();
+      showFeatureStatus(feature);
+    }
+
+    function findFeatureByAdcode(adcode) {
+      return currentGeoJson?.features?.find((feature) => String(feature.properties?.adcode || "") === String(adcode));
+    }
+
+    function eventFeature(event) {
+      const node = event.target.closest?.("[data-adcode]");
+      if (!node) return null;
+      return findFeatureByAdcode(node.dataset.adcode);
+    }
+
+    function desiredLayer() {
+      return [...LAYERS].reverse().find((layer) => view.scale >= layer.minScale) || LAYERS[0];
+    }
+
+    async function loadLayer(layer, options = {}) {
+      if (layerCache.has(layer.id)) return layerCache.get(layer.id);
+      if (!options.silent) {
+        status.textContent = `正在加载全国${layer.name}边界...`;
+      }
+      const response = await fetch(layer.file);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const geojson = await response.json();
+      layerCache.set(layer.id, geojson);
+      return geojson;
+    }
+
+    function warmLayerCache() {
+      const run = async () => {
+        for (const layer of LAYERS.slice(1)) {
+          try {
+            await loadLayer(layer, { silent: true });
+          } catch {
+            break;
+          }
+        }
+      };
+      if ("requestIdleCallback" in window) {
+        requestIdleCallback(run, { timeout: 2500 });
+      } else {
+        setTimeout(run, 600);
+      }
+    }
+
+    async function updateLayerForScale() {
+      const nextLayer = desiredLayer();
+      if (nextLayer.id === activeLayer.id && currentGeoJson) {
+        renderCrumbs();
+        return;
+      }
+      const nextGeoJson = await loadLayer(nextLayer);
+      activeLayer = nextLayer;
+      currentGeoJson = nextGeoJson;
+      visibleLabelAdcodes = new Set();
+      render(currentGeoJson);
+    }
+
+    function scheduleLayerUpdate() {
+      if (layerSwitchFrame) return;
+      layerSwitchFrame = requestAnimationFrame(() => {
+        layerSwitchFrame = 0;
+        updateLayerForScale().catch((error) => {
+        status.innerHTML = `<strong>切换层级失败</strong>：${error.message}<br>如果这是首次运行，请先执行 <code>python .\\scripts\\download_datav_boundaries.py</code> 下载并生成地图数据。`;
+        });
+      });
+    }
+
+    async function findSearchMatch(query) {
+      const text = query.trim();
+      if (!text) return null;
+      const layers = [LAYERS[0], LAYERS[1], LAYERS[2]];
+      const loaded = [];
+      for (const layer of layers) {
+        const geojson = await loadLayer(layer);
+        loaded.push({ layer, geojson });
+      }
+
+      for (const { layer, geojson } of loaded) {
+        const feature = geojson.features.find((item) => {
+          const props = item.properties || {};
+          return props.name === text || props.fullname === text || String(props.adcode || "") === text;
+        });
+        if (feature) return { layer, feature };
+      }
+
+      for (const { layer, geojson } of loaded) {
+        const feature = geojson.features.find((item) => {
+          const props = item.properties || {};
+          return String(props.name || "").includes(text) || String(props.fullname || "").includes(text);
+        });
+        if (feature) return { layer, feature };
+      }
+      return null;
+    }
+
+    async function searchPlace() {
+      const match = await findSearchMatch(searchInput.value);
+      if (!match) {
+        status.innerHTML = `<strong>未找到</strong>：${searchInput.value.trim() || "空搜索"}`;
+        return;
+      }
+
+      activeLayer = match.layer;
+      currentGeoJson = await loadLayer(activeLayer);
+      view.scale = Math.max(match.layer.minScale || 1, match.layer.id === "province" ? 1.4 : match.layer.id === "city" ? 3.1 : 6.4);
+      render(currentGeoJson);
+
+      const adcode = String(match.feature.properties?.adcode || "");
+      const item = labelOverlay.querySelector(`.label-item[data-adcode="${adcode}"]`);
+      if (!item) return;
+      const mapX = Number(item.dataset.x);
+      const mapY = Number(item.dataset.y);
+      const width = svg.clientWidth || 1200;
+      const height = svg.clientHeight || 780;
+      highlightedAdcodes.add(adcode);
+      setView({
+        x: width / 2 - mapX * view.scale,
+        y: height / 2 - mapY * view.scale,
+        scale: view.scale
+      });
+      applyHighlights();
+      showFeatureStatus(match.feature);
+    }
+
+    async function queryTransitPlans() {
+      const destinations = [...routeDestinations.values()];
+      if (!routeOrigin || !destinations.length) {
+        routeResults.textContent = "请先选择起点和至少一个终点。";
+        return;
+      }
+      routeResults.textContent = "正在查询高德公共交通方案...";
+      try {
+        const response = await fetch("/api/transit", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ origin: routeOrigin, destinations })
+        });
+        const data = await response.json();
+        if (!response.ok || !data.ok) {
+          throw new Error(data.error || `HTTP ${response.status}`);
+        }
+        renderTransitResults(data.results);
+      } catch (error) {
+        routeResults.innerHTML = `<strong>查询失败</strong><br>${error.message}<br><br>如果你还在用 python3 -m http.server，请改用 server.py；如果没有高德 Key，请配置 AMAP_KEY。`;
+      }
+    }
+
+    function renderTransitResults(results) {
+      routeResults.replaceChildren();
+      results.forEach((item) => {
+        const block = document.createElement("div");
+        block.className = "route-result";
+        if (!item.ok) {
+          block.innerHTML = `<strong>${item.destination.name}</strong><br>未找到方案：${item.error || "未知错误"}`;
+        } else {
+          block.innerHTML = `<strong>${item.destination.name}</strong>`;
+          const directPlans = item.railOptions?.direct || [];
+          const transferPlans = item.railOptions?.transfer || [];
+          const directHighspeed = directPlans.filter((plan) => plan.category === "highspeed");
+          const directRegular = directPlans.filter((plan) => plan.category !== "highspeed");
+          if (directPlans.length) {
+            if (directHighspeed.length) block.append(renderPlanGroup("直达高铁/动车", directHighspeed));
+            if (directRegular.length) block.append(renderPlanGroup("直达普通火车", directRegular));
+          } else if (transferPlans.length) {
+            block.append(renderPlanGroup("铁路中转方案", transferPlans));
+          } else {
+            const fallback = item.fallbackTotal || {};
+            const empty = document.createElement("div");
+            empty.className = "rail-meta";
+            empty.textContent = `未找到铁路段；综合公共交通约 ${fallback.durationText || "未知"}，费用 ${fallback.cost || "未知"} 元。`;
+            block.append(empty);
+          }
+        }
+        routeResults.append(block);
+      });
+    }
+
+    function renderPlanGroup(title, plans) {
+      const wrapper = document.createElement("div");
+      plans.forEach((plan, index) => {
+        const card = document.createElement("div");
+        card.className = "rail-plan";
+        const category = plan.category === "highspeed" ? "高铁/动车/城际" : plan.category === "mixed" ? "混合铁路" : "普通火车";
+        const trains = plan.railways.map((railway) => `${railway.name}：${railway.from} -> ${railway.to}`).join("；");
+        const seats = plan.railways.flatMap((railway) => railway.prices || []).slice(0, 4).map((price) => `${price.seat} ${price.costText}`).join("，") || "票价未知";
+        card.innerHTML = `<div class="rail-title">${title} ${index + 1} | ${category}</div><div class="rail-meta">铁路时间：${plan.durationText}<br>铁路最低票价：${plan.minCostText}<br>铁路距离：${plan.distanceText}<br>${trains}<br>席别：${seats}<br>含市内接驳参考：${plan.totalDurationText}，${plan.totalCostText}</div>`;
+        wrapper.append(card);
+      });
+      return wrapper;
+    }
+
+    function clearRouteSelection() {
+      if (routeOrigin) highlightedAdcodes.delete(routeOrigin.adcode);
+      routeDestinations.forEach((item) => highlightedAdcodes.delete(item.adcode));
+      routeOrigin = null;
+      routeDestinations.clear();
+      routeResults.textContent = "选择起点和一个或多个终点后，点击“查交通”。";
+      applyHighlights();
+      renderRoutePanel();
+    }
+
+    function updateLabels() {
+      const screenSize = activeLayer.labelSize;
+      const gap = activeLayer.minGap;
+      const width = svg.clientWidth || 1200;
+      const height = svg.clientHeight || 780;
+      const placed = [];
+      const candidates = [];
+
+      labelOverlay.querySelectorAll(".label-item").forEach((item) => {
+        const label = item.querySelector(".label");
+        const marker = item.querySelector(".marker");
+        const text = label.textContent || "";
+        const mapX = Number(item.dataset.x);
+        const mapY = Number(item.dataset.y);
+        const mapBounds = {
+          minX: Number(item.dataset.minX),
+          minY: Number(item.dataset.minY),
+          maxX: Number(item.dataset.maxX),
+          maxY: Number(item.dataset.maxY)
+        };
+        const screenBounds = {
+          left: view.x + mapBounds.minX * view.scale,
+          top: view.y + mapBounds.minY * view.scale,
+          right: view.x + mapBounds.maxX * view.scale,
+          bottom: view.y + mapBounds.maxY * view.scale
+        };
+        const intersectsViewport = screenBounds.right >= 0 && screenBounds.left <= width && screenBounds.bottom >= 0 && screenBounds.top <= height;
+        if (!intersectsViewport) {
+          item.setAttribute("display", "none");
+          return;
+        }
+
+        const anchorX = view.x + mapX * view.scale;
+        const anchorY = view.y + mapY * view.scale;
+        const visibleLeft = Math.max(0, screenBounds.left);
+        const visibleRight = Math.min(width, screenBounds.right);
+        const visibleTop = Math.max(0, screenBounds.top);
+        const visibleBottom = Math.min(height, screenBounds.bottom);
+        const anchorInViewport = anchorX >= 0 && anchorX <= width && anchorY >= 0 && anchorY <= height;
+        const screenX = anchorInViewport ? anchorX : clamp((visibleLeft + visibleRight) / 2, 0, width);
+        const screenY = anchorInViewport ? anchorY : clamp((visibleTop + visibleBottom) / 2, 0, height);
+        const markerSize = activeLayer.markerSize;
+        const labelW = Math.max(18, markerSize * 2 + activeLayer.markerGap + text.length * screenSize * 0.62);
+        const labelH = Math.max(screenSize + 4, markerSize * 2 + 4);
+        item.setAttribute("transform", `translate(${screenX.toFixed(2)} ${screenY.toFixed(2)})`);
+        marker.setAttribute("r", markerSize.toFixed(2));
+        label.setAttribute("x", (markerSize + activeLayer.markerGap).toFixed(2));
+        label.setAttribute("y", "0");
+        label.style.fontSize = `${screenSize}px`;
+        const box = {
+          left: screenX - markerSize - gap / 2,
+          right: screenX + labelW + gap / 2,
+          top: screenY - labelH / 2 - gap / 2,
+          bottom: screenY + labelH / 2 + gap / 2
+        };
+        const inViewport = box.right >= 0 && box.left <= width && box.bottom >= 0 && box.top <= height;
+        if (inViewport) {
+          const cellX = Math.floor(screenX / activeLayer.cellSize);
+          const cellY = Math.floor(screenY / activeLayer.cellSize);
+          const cellCenterX = (cellX + 0.5) * activeLayer.cellSize;
+          const cellCenterY = (cellY + 0.5) * activeLayer.cellSize;
+          const cellDistance = Math.hypot(screenX - cellCenterX, screenY - cellCenterY);
+          candidates.push({
+            item,
+            box,
+            cellX,
+            cellY,
+            cellDistance,
+            adcode: item.dataset.adcode,
+            sticky: visibleLabelAdcodes.has(item.dataset.adcode)
+          });
+        } else {
+          item.setAttribute("display", "none");
+        }
+      });
+
+      const nextVisible = new Set();
+      const placeCandidate = ({ item, box, adcode }) => {
+        if (placed.length >= activeLayer.maxLabels) {
+          item.setAttribute("display", "none");
+          return false;
+        }
+        const overlaps = placed.some((candidateBox) => (
+          box.left < candidateBox.right && box.right > candidateBox.left && box.top < candidateBox.bottom && box.bottom > candidateBox.top
+        ));
+        if (overlaps) {
+          item.setAttribute("display", "none");
+          return false;
+        }
+        item.removeAttribute("display");
+        placed.push(box);
+        nextVisible.add(adcode);
+        return true;
+      };
+
+      const stickyCandidates = candidates.filter((candidate) => candidate.sticky);
+      stickyCandidates.forEach(placeCandidate);
+
+      const queues = new Map();
+      candidates.filter((candidate) => !candidate.sticky).forEach((candidate) => {
+        const key = `${candidate.cellX}:${candidate.cellY}`;
+        if (!queues.has(key)) queues.set(key, []);
+        queues.get(key).push(candidate);
+      });
+      queues.forEach((queue) => queue.sort((a, b) => a.cellDistance - b.cellDistance));
+
+      const ordered = [];
+      let round = 0;
+      while (ordered.length < candidates.length) {
+        let added = false;
+        [...queues.keys()].sort().forEach((key) => {
+          const candidate = queues.get(key)[round];
+          if (candidate) {
+            ordered.push(candidate);
+            added = true;
+          }
+        });
+        if (!added) break;
+        round += 1;
+      }
+
+      ordered.forEach(placeCandidate);
+      visibleLabelAdcodes = nextVisible;
+    }
+
+    function render(geojson) {
+      const width = svg.clientWidth || 1200;
+      const height = svg.clientHeight || 780;
+      const bounds = MAP_BOUNDS;
+      svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+      viewport.replaceChildren();
+      labelOverlay.replaceChildren();
+      const areaLayer = document.createElementNS(SVG_NS, "g");
+      viewport.append(areaLayer);
+
+      geojson.features.forEach((feature) => {
+        const props = feature.properties || {};
+        const name = props.name || props.fullname || props.adcode || "未命名";
+        const adcode = String(props.adcode || "");
+
+        geometryToPaths(feature.geometry, bounds, width, height).forEach((d) => {
+          const path = document.createElementNS(SVG_NS, "path");
+          path.setAttribute("d", d);
+          path.setAttribute("class", "area");
+          path.style.stroke = colorForKey(boundaryKey(feature));
+          path.style.strokeWidth = activeLayer.strokeWidth;
+          path.dataset.name = name;
+          path.dataset.adcode = adcode;
+          path.addEventListener("click", () => {
+            if (suppressNextClick) return;
+            handleFeatureClick(feature);
+          });
+          path.addEventListener("dblclick", () => showFeatureStatus(feature));
+          areaLayer.append(path);
+        });
+
+        const [labelX, labelY] = labelPosition(feature, bounds, width, height);
+        const featureBounds = projectedFeatureBounds(feature, bounds, width, height);
+        const labelItem = document.createElementNS(SVG_NS, "g");
+        labelItem.setAttribute("class", `label-item ${labelLevel(feature)}`);
+        labelItem.dataset.name = name;
+        labelItem.dataset.adcode = adcode;
+        labelItem.dataset.x = labelX.toFixed(2);
+        labelItem.dataset.y = labelY.toFixed(2);
+        labelItem.dataset.minX = featureBounds.minX.toFixed(2);
+        labelItem.dataset.minY = featureBounds.minY.toFixed(2);
+        labelItem.dataset.maxX = featureBounds.maxX.toFixed(2);
+        labelItem.dataset.maxY = featureBounds.maxY.toFixed(2);
+        labelItem.addEventListener("click", () => handleFeatureClick(feature));
+        labelItem.addEventListener("dblclick", () => showFeatureStatus(feature));
+
+        const marker = document.createElementNS(SVG_NS, "circle");
+        marker.setAttribute("cx", "0");
+        marker.setAttribute("cy", "0");
+        marker.setAttribute("class", `marker ${labelLevel(feature)}`);
+
+        const label = document.createElementNS(SVG_NS, "text");
+        label.setAttribute("y", "0");
+        label.setAttribute("class", `label ${labelLevel(feature)}`);
+        label.textContent = name;
+        labelItem.append(marker, label);
+        labelOverlay.append(labelItem);
+      });
+
+      updateLabels();
+      applyHighlights();
+      status.innerHTML = `<strong>全国${activeLayer.name}</strong> 已渲染：${geojson.features.length} 个要素。滚轮放大显示更细层级，滚轮缩小恢复更粗层级，地图范围始终是全国。`;
+      renderCrumbs();
+    }
+
+    svg.addEventListener("wheel", (event) => {
+      event.preventDefault();
+      zoomAt(event.clientX, event.clientY, event.deltaY < 0 ? 1.18 : 1 / 1.18);
+    }, { passive: false });
+
+    svg.addEventListener("pointerdown", (event) => {
+      svg.setPointerCapture(event.pointerId);
+      svg.classList.add("is-dragging");
+      suppressNextClick = false;
+      drag = { id: event.pointerId, x: event.clientX, y: event.clientY, originX: view.x, originY: view.y, moved: false };
+    });
+
+    svg.addEventListener("pointermove", (event) => {
+      if (!drag || drag.id !== event.pointerId) return;
+      if (Math.hypot(event.clientX - drag.x, event.clientY - drag.y) > 4) {
+        drag.moved = true;
+      }
+      view.x = drag.originX + event.clientX - drag.x;
+      view.y = drag.originY + event.clientY - drag.y;
+      applyTransform();
+    });
+
+    function endDrag(event) {
+      if (!drag || drag.id !== event.pointerId) return;
+      suppressNextClick = drag.moved;
+      drag = null;
+      svg.classList.remove("is-dragging");
+      setTimeout(() => {
+        suppressNextClick = false;
+      }, 0);
+    }
+
+    svg.addEventListener("pointerup", endDrag);
+    svg.addEventListener("pointercancel", endDrag);
+    fit.addEventListener("click", resetView);
+    inspectMode.addEventListener("click", () => setMode("inspect"));
+    originMode.addEventListener("click", () => setMode("origin"));
+    destinationMode.addEventListener("click", () => setMode("destination"));
+    queryTransit.addEventListener("click", () => {
+      queryTransitPlans().catch((error) => {
+        routeResults.innerHTML = `<strong>查询失败</strong><br>${error.message}`;
+      });
+    });
+    clearRoute.addEventListener("click", clearRouteSelection);
+    searchButton.addEventListener("click", () => {
+      searchPlace().catch((error) => {
+        status.innerHTML = `<strong>搜索失败</strong>：${error.message}`;
+      });
+    });
+    searchInput.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        searchPlace().catch((error) => {
+          status.innerHTML = `<strong>搜索失败</strong>：${error.message}`;
+        });
+      }
+    });
+    zoomIn.addEventListener("click", () => {
+      const rect = svg.getBoundingClientRect();
+      zoomAt(rect.left + rect.width / 2, rect.top + rect.height / 2, 1.25);
+    });
+    zoomOut.addEventListener("click", () => {
+      const rect = svg.getBoundingClientRect();
+      zoomAt(rect.left + rect.width / 2, rect.top + rect.height / 2, 1 / 1.25);
+    });
+    back.addEventListener("click", resetView);
+    window.addEventListener("resize", () => currentGeoJson && render(currentGeoJson));
+
+    updateLayerForScale().then(warmLayerCache).catch((error) => {
+      status.innerHTML = `<strong>加载失败</strong>：${error.message}<br>如果仓库未附带地图数据，请先执行 <code>python .\\scripts\\download_datav_boundaries.py</code>。`;
+    });
+  </script>
+</body>
+</html>

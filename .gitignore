@@ -1,0 +1,9 @@
+.env
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+data/datav/*.json
+data/maps/*.geojson
+!data/datav/.gitkeep
+!data/maps/.gitkeep
